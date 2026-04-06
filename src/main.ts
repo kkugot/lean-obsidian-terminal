@@ -9,6 +9,7 @@ import { BinaryManager } from "./binary-manager";
 export default class TerminalPlugin extends Plugin {
   settings: TerminalPluginSettings = DEFAULT_SETTINGS;
   binaryManager!: BinaryManager;
+  private themeObserver: MutationObserver | null = null;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -66,9 +67,25 @@ export default class TerminalPlugin extends Plugin {
 
     // Settings tab
     this.addSettingTab(new TerminalSettingTab(this.app, this));
+
+    // Watch for Obsidian theme changes (dark/light toggle)
+    this.themeObserver = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        if (m.type === "attributes" && m.attributeName === "class") {
+          // Only re-theme when user chose "system" (auto-follow Obsidian)
+          if (this.settings.theme === "system") {
+            this.updateTerminalThemes();
+          }
+        }
+      }
+    });
+    this.themeObserver.observe(document.body, { attributes: true, attributeFilter: ["class"] });
   }
 
   onunload(): void {
+    this.themeObserver?.disconnect();
+    this.themeObserver = null;
+
     // Detach after a tick to avoid disrupting the settings modal
     setTimeout(() => {
       this.app.workspace.detachLeavesOfType(VIEW_TYPE_TERMINAL);
@@ -138,6 +155,15 @@ export default class TerminalPlugin extends Plugin {
     for (const leaf of leaves) {
       const view = leaf.view as TerminalView;
       view.updateBackgroundColor();
+    }
+  }
+
+  /** Re-apply the full theme to all terminal views (e.g. after Obsidian dark/light switch). */
+  updateTerminalThemes(): void {
+    const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL);
+    for (const leaf of leaves) {
+      const view = leaf.view as TerminalView;
+      view.updateTheme();
     }
   }
 }
